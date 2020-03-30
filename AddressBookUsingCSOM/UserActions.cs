@@ -1,7 +1,13 @@
-﻿using Microsoft.SharePoint.Client;
+﻿using Microsoft.SharePoint;
+using Microsoft.SharePoint.Client;
+using Microsoft.SharePoint.Client.Taxonomy;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net;
+using System.Security;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -11,7 +17,7 @@ namespace AddressBookUsingCSOM
     {
         ClientContext clientContext;
         CommonMethods commonMethods = new CommonMethods();
-
+         
         public UserActions(ClientContext clientContext)
         {
             this.clientContext = clientContext;
@@ -40,54 +46,123 @@ namespace AddressBookUsingCSOM
 
         public void ViewAllContacts()
         {
-            List list = clientContext.Web.Lists.GetByTitle("Address Book");
+            List list = null;
+            if (!clientContext.Web.ListExists("AddressBook1"))
+            {
+                //var listCreationInformationInfo = new ListCreationInformation
+                //{
+                //   Title = "AddressBook1",
+                //   Description = "AddressBook list created from CSOM"
+                //};
+                list = CreateList();
+            }
+            else
+            {
+                list = clientContext.Web.Lists.GetByTitle("AddressBook1");
+            }
             CamlQuery query = new CamlQuery();
             ListItemCollection contacts = list.GetItems(query);
 
             clientContext.Load(list);
             clientContext.Load(contacts);
             clientContext.ExecuteQuery();
-            
-            foreach (ListItem contact in contacts)
+
+            if (contacts.Count() > 0)
             {
+                foreach (ListItem contact in contacts)
+                {
+                    FieldUserValue contactName = contact["ContactName"] as FieldUserValue;
+                    Microsoft.SharePoint.Client.Taxonomy.TaxonomyFieldValue taxFieldValue = contact["Group"] as Microsoft.SharePoint.Client.Taxonomy.TaxonomyFieldValue;
+                    Console.WriteLine("------------------------------------------------------------------------------------------------------------------------");
+                    Console.WriteLine("Id : " + contact["Title"] + ". | Name : " + contactName.LookupValue.ToString() + " | Email : " + contact["Email"]
+                        + " \t | Mobile : " + contact["Mobile"] + " \t | Landline : " + contact["Landline"] +
+                        " | Website :  " + contact["Website"] + " | Address : " + contact["Address"]+ " | Group : "+taxFieldValue.Label);
+                }
+
                 Console.WriteLine("------------------------------------------------------------------------------------------------------------------------");
-                Console.WriteLine("Id : "+contact["Title"] + ". | Name : " + contact["ContactName"]+ " | Email : "+contact["Email"]
-                    +" \t | Mobile : "+contact["Mobile"]+" \t | Landline : "+contact["Landline"]+
-                    " | Website :  "+contact["Website"]+" | Address : "+contact["Address"]);
+                int choice = commonMethods.ReadInt("Enter the action that you want to perform : 1. View Contact 2. Continue 3.Exit >> ");
+
+                switch (choice)
+                {
+                    case 1:
+                        ViewContact(contacts);
+                        break;
+
+                    case 2:
+                        ShowUserActions();
+                        break;
+
+                    case 3:
+                        Environment.Exit(0);
+                        break;
+                }
             }
-
-            Console.WriteLine("------------------------------------------------------------------------------------------------------------------------");
-            int choice = commonMethods.ReadInt("Enter the action that you want to perform : 1. View Contact 2. Continue 3.Exit >> ");
-            
-            switch (choice)
-            { 
-                case 1: ViewContact(contacts);
-                    break;
-
-                case 2: ShowUserActions();
-                    break;
-
-                case 3: Environment.Exit(0);
-                    break;
+            else
+            {
+                Console.WriteLine("There are no contacts to view!");
+                int choice = commonMethods.ReadInt("Do you want to add a new contact ? 1.Add 2. Exit >> ");
+                choice = commonMethods.IsValidChoice(choice);
+                if (choice == 1)
+                {
+                    AddContact();
+                }
+                Environment.Exit(0);
             }
         }
 
         public void AddContact()
         {
-            List list = clientContext.Web.Lists.GetByTitle("Address Book");
+            List list = null;
+            if (!clientContext.Web.ListExists("AddressBook1"))
+            {
+                list = CreateList();
+            }
+            else
+            {
+                list = clientContext.Web.GetListByTitle("AddressBook1");
+            }
             CamlQuery query = new CamlQuery();
             query.ViewXml = "<View/>";
             ListItemCollection items = list.GetItems(query);
+
             clientContext.Load(list);
             clientContext.Load(items);
             clientContext.ExecuteQuery();
+            Web web = clientContext.Web;
+            clientContext.ExecuteQuery();
 
-            ListItem lastItem = items[items.Count()-1];
+            var users = web.SiteUsers;
+            clientContext.Load(users);
+            clientContext.ExecuteQuery();
+            string title;
+
+            if (items.Count()==0)
+            {
+                title = "0";
+            }
+            else
+            {
+                ListItem lastItem = items[items.Count() - 1];
+                title = lastItem["Title"].ToString();
+            }
+            
 
             ListItemCreationInformation newItem = new ListItemCreationInformation();
             ListItem newContact = list.AddItem(newItem);
-            newContact["Title"] = (Int32.Parse(lastItem["Title"].ToString())+1).ToString();
-            newContact["ContactName"] = commonMethods.ReadString("Enter name of the contact : ");
+            newContact["Title"] = (Int32.Parse(title) + 1).ToString();
+            string name = commonMethods.ReadString("Enter name of the contact : ");
+            //PeopleManager peopleManager = new PeopleManager(clientContext);
+            //PersonProperties personProperties = peopleManager.GetPropertiesFor(name);
+            //clientContext.Load(personProperties, p => p.AccountName, p => p.Email, p => p.DisplayName);
+            //clientContext.ExecuteQuery();
+
+            //SPSite spSite = new SPSite("https://intern2k20.sharepoint.com/sites/Technovert");
+            //SPWeb web = spSite.OpenWeb();
+            //SPUser webUser = web.EnsureUser(name);
+            //SPFieldUserValue value = new SPFieldUserValue(web, webUser.ID, webUser.Name);
+
+            newContact["ContactName"] = users.First(obj => obj.Title == name);
+
             string email = commonMethods.ReadString("Enter email id of the contact : ");
             bool isValidEmail = commonMethods.IsValidEmail(email);
             while (!isValidEmail)
@@ -97,7 +172,7 @@ namespace AddressBookUsingCSOM
             }
             newContact["Email"] = email;
 
-            string mobile = commonMethods.ReadString("Enter new mobile number of contact : ");
+            string mobile = commonMethods.ReadString("Enter mobile number of contact : ");
             bool isValidMobileNumber = commonMethods.IsValidPhoneNumber(mobile);
             while (!isValidMobileNumber)
             {
@@ -117,24 +192,61 @@ namespace AddressBookUsingCSOM
             Console.Write("Enter address of the contact : ");
             string address = Console.ReadLine();
             newContact["Address"] = address;
-
             newContact.Update();
-            clientContext.ExecuteQuery();
-            Console.WriteLine("Contact added successfully!!");
+            if (UpsertGroup(newContact))
+            {
+                Console.WriteLine("Contact added successfully!!");
+            }
+            else
+            {
+                Console.WriteLine("Failed to assign to group");
+                Console.WriteLine("Failed to insert new contact");
+            }
             FurtherActions();
         }
 
         public void EditContact(ListItem contact)
-        {
+        { 
             Console.Write("Enter the field that you want to edit : ");
             int selectedField = Int32.Parse(Console.ReadLine());
+            List contacts = clientContext.Web.Lists.GetByTitle("AddressBook1");
+            Web web = clientContext.Web;
+            clientContext.Load(web);
+            clientContext.ExecuteQuery();
+
+            FieldCollection fields = contacts.Fields;
+            var users = web.SiteUsers;
+            clientContext.Load(users);
+            clientContext.Load(fields);
+            clientContext.ExecuteQuery();
 
             switch (selectedField)
             {
                 case 1:
+                    var nameField = fields.GetFieldByInternalName("ContactName");
+                    nameField.ReadOnlyField = false;
+                    nameField.Update();
                     string name = commonMethods.ReadString("Enter new name for the contact : ");
-                    contact["ContactName"] = name;
+                    //var users = clientContext.LoadQuery(clientContext.Web.SiteUsers.Where(u => u.PrincipalType == PrincipalType.User && u.UserId.NameIdIssuer == "urn:federation:microsoftonline"));
+                    //contact["ContactName"] = users.First(obj=> obj.Email.ToString()==contact["Email"].ToString()).Id;
+
+                    //var user = clientContext.LoadQuery(web.SiteUsers.Where(obj => obj.LoginName == name));
+                    //clientContext.ExecuteQuery();
+
+                    //contact["ContactName"] = user;
+                    //PeopleManager peopleManager = new PeopleManager(clientContext);
+                    //PersonProperties personProperties = peopleManager.GetPropertiesFor(name);
+                    //clientContext.Load(personProperties, p => p.AccountName, p => p.Email, p => p.DisplayName);
+                    //clientContext.ExecuteQuery();
+                     
+                    contact["ContactName"] = users.First(obj => obj.Title == name);
                     contact.Update();
+
+                    clientContext.ExecuteQuery();
+                    nameField.ReadOnlyField = true;
+                    nameField.Update();
+                    
+                    //web.Update();
                     break;
 
                 case 2:
@@ -180,6 +292,20 @@ namespace AddressBookUsingCSOM
                     contact["Address"] = address;
                     contact.Update();
                     break;
+
+                case 7:
+                    //SPList list = new SPList("TemporaryList");
+                    //SPListItem selectedContact = list.AddItem();
+                    //selectedContact["Group"] = contact["Group"];
+                    //Guid Promotypeid = selectedContact.Fields["Group"].Id;
+                    //TaxonomyField taxfield = selectedContact.Fields[Promotypeid] as TaxonomyField;
+                    //SPSite site = new SPSite("https://intern2k20.sharepoint.com/sites/Technovert");
+                    if (!UpsertGroup(contact))
+                    {
+                        Console.WriteLine("Failed to assign to group!!");
+                        Console.WriteLine("Failed to update contact!!");
+                    }
+                    break;
             }
             clientContext.ExecuteQuery();
             Console.WriteLine("Contact edited successfully!!");
@@ -212,11 +338,13 @@ namespace AddressBookUsingCSOM
                 }
             }
             
+            FieldUserValue contactName = selectedContact["ContactName"] as FieldUserValue;
+            Microsoft.SharePoint.Client.Taxonomy.TaxonomyFieldValue group = selectedContact["Group"] as Microsoft.SharePoint.Client.Taxonomy.TaxonomyFieldValue;
             Console.WriteLine("Current Details of the contact are : ");
-            Console.WriteLine("1. Name : " + selectedContact["ContactName"] + " 2. Email : " + selectedContact["Email"]);
+            Console.WriteLine("1. Name : " + contactName.LookupValue.ToString() + " 2. Email : " + selectedContact["Email"]);
             Console.WriteLine("3. Mobile : " + selectedContact["Mobile"] + " 4. Landline : " + selectedContact["Landline"]);
             Console.WriteLine("5. Website : " + selectedContact["Website"] + " 6. Address : " + selectedContact["Address"]);
-
+            Console.WriteLine("7. Group : " + group.Label);
             int choice = commonMethods.ReadInt("Enter the action you want to perform : 1. Edit Contact 2. Delete Contact 3. Continue >> ");
             while(choice>3 || choice < 1)
             {
@@ -244,6 +372,85 @@ namespace AddressBookUsingCSOM
                 ShowUserActions();
             }
             else Environment.Exit(0);
+        }
+
+        public List CreateList()
+        {
+            List list = clientContext.Web.CreateList(ListTemplateType.GenericList, "AddressBook1", false, true, string.Empty, true);
+            string schemaUserField = "<Field Type='User' Name='ContactName' StaticName='ContactName' DisplayName='ContactName' />";
+            Field userField = list.Fields.AddFieldAsXml(schemaUserField, true, AddFieldOptions.AddFieldInternalNameHint);
+
+            string emailField = "<Field Type='Text' Name='Email' StaticName='Email' DisplayName='Email' />";
+            Field emailTextField = list.Fields.AddFieldAsXml(emailField, true, AddFieldOptions.AddToDefaultContentType);
+
+            string mobileField = "<Field Type='Text' Name='Mobile' StaticName='Mobile' DisplayName='Mobile' />";
+            Field mobileTextField = list.Fields.AddFieldAsXml(mobileField, true, AddFieldOptions.AddToDefaultContentType);
+
+            string landlineField = "<Field Type='Text' Name='Landline' StaticName='Landline' DisplayName='Landline' />";
+            Field landlineTextField = list.Fields.AddFieldAsXml(landlineField, true, AddFieldOptions.AddToDefaultContentType);
+
+            string websiteField = "<Field Type='Text' Name='Website' StaticName='Website' DisplayName='Website' />";
+            Field websiteTextField = list.Fields.AddFieldAsXml(websiteField, true, AddFieldOptions.AddToDefaultContentType);
+
+            string addressField = "<Field Type='Text' Name='Address' StaticName='Address' DisplayName='Address' />";
+            Field addressTextField = list.Fields.AddFieldAsXml(addressField, true, AddFieldOptions.AddToDefaultContentType);
+            clientContext.ExecuteQuery();
+            return list;
+        }
+
+        public bool UpsertGroup(ListItem contact)
+        {
+            try
+            {
+                List contacts = clientContext.Web.Lists.GetByTitle("AddressBook1");
+                clientContext.ExecuteQuery();
+                FieldCollection fields = contacts.Fields;
+                clientContext.Load(fields);
+                TaxonomyField taxonomyField = fields.GetFieldByInternalName("Group") as TaxonomyField;
+                TaxonomySession session = TaxonomySession.GetTaxonomySession(clientContext);
+                TermStore mytermstore = session.GetDefaultKeywordsTermStore();
+                TermSet termSet = mytermstore.GetTermSet(taxonomyField.TermSetId);
+                TermCollection terms = termSet.Terms;
+                clientContext.Load(terms);
+                clientContext.ExecuteQuery();
+                int count = 1;
+                foreach (Term term in terms)
+                {
+                    Console.WriteLine(count + " " + term.Name);
+                    count += 1;
+                }
+                int selectedChoice = commonMethods.ReadInt("Enter the group that you want to assign from above list : ");
+                while (selectedChoice > count || selectedChoice < 1)
+                {
+                    selectedChoice = commonMethods.ReadInt("Please enter a valid choice : ");
+                }
+                string selectedGroup = terms[selectedChoice - 1].Name;
+                Guid termGuid = Guid.Empty;
+                foreach (Term term in terms)
+                {
+                    if (term.Name.Equals(selectedGroup, StringComparison.OrdinalIgnoreCase))
+                    {
+                        termGuid = term.Id;
+                        break;
+                    }
+                }
+                if (termGuid != Guid.Empty)
+                {
+                    Term customTerm = termSet.GetTerm(termGuid);
+                    clientContext.Load(customTerm);
+                    clientContext.ExecuteQuery();
+                    string taxFieldInternalname = "Group";
+                    contact[taxFieldInternalname] = customTerm.Name + "|" + customTerm.Id.ToString();
+                    contact.Update();
+                    return true;
+                }
+                return false;
+            }
+            catch(Exception exception)
+            {
+                Console.WriteLine(exception.StackTrace);
+                return false;
+            }
         }
     }
 }
