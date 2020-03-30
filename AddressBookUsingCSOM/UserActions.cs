@@ -17,7 +17,7 @@ namespace AddressBookUsingCSOM
     {
         ClientContext clientContext;
         CommonMethods commonMethods = new CommonMethods();
-         
+        string listName = "AddressBook2";
         public UserActions(ClientContext clientContext)
         {
             this.clientContext = clientContext;
@@ -47,7 +47,7 @@ namespace AddressBookUsingCSOM
         public void ViewAllContacts()
         {
             List list = null;
-            if (!clientContext.Web.ListExists("AddressBook1"))
+            if (!clientContext.Web.ListExists(listName))
             {
                 //var listCreationInformationInfo = new ListCreationInformation
                 //{
@@ -58,7 +58,7 @@ namespace AddressBookUsingCSOM
             }
             else
             {
-                list = clientContext.Web.Lists.GetByTitle("AddressBook1");
+                list = clientContext.Web.Lists.GetByTitle(listName);
             }
             CamlQuery query = new CamlQuery();
             ListItemCollection contacts = list.GetItems(query);
@@ -113,13 +113,13 @@ namespace AddressBookUsingCSOM
         public void AddContact()
         {
             List list = null;
-            if (!clientContext.Web.ListExists("AddressBook1"))
+            if (!clientContext.Web.ListExists(listName))
             {
                 list = CreateList();
             }
             else
             {
-                list = clientContext.Web.GetListByTitle("AddressBook1");
+                list = clientContext.Web.GetListByTitle(listName);
             }
             CamlQuery query = new CamlQuery();
             query.ViewXml = "<View/>";
@@ -209,7 +209,7 @@ namespace AddressBookUsingCSOM
         { 
             Console.Write("Enter the field that you want to edit : ");
             int selectedField = Int32.Parse(Console.ReadLine());
-            List contacts = clientContext.Web.Lists.GetByTitle("AddressBook1");
+            List contacts = clientContext.Web.Lists.GetByTitle(listName);
             Web web = clientContext.Web;
             clientContext.Load(web);
             clientContext.ExecuteQuery();
@@ -376,7 +376,7 @@ namespace AddressBookUsingCSOM
 
         public List CreateList()
         {
-            List list = clientContext.Web.CreateList(ListTemplateType.GenericList, "AddressBook1", false, true, string.Empty, true);
+            List list = clientContext.Web.CreateList(ListTemplateType.GenericList, listName, false, true, string.Empty, true);
             string schemaUserField = "<Field Type='User' Name='ContactName' StaticName='ContactName' DisplayName='ContactName' />";
             Field userField = list.Fields.AddFieldAsXml(schemaUserField, true, AddFieldOptions.AddFieldInternalNameHint);
 
@@ -394,6 +394,20 @@ namespace AddressBookUsingCSOM
 
             string addressField = "<Field Type='Text' Name='Address' StaticName='Address' DisplayName='Address' />";
             Field addressTextField = list.Fields.AddFieldAsXml(addressField, true, AddFieldOptions.AddToDefaultContentType);
+            
+            string groupField = "<Field Type='TaxonomyFieldType' Name='Group' StaticName='Group' DisplayName = 'Group' /> ";
+            Field groupMetadataField = list.Fields.AddFieldAsXml(groupField, true, AddFieldOptions.AddFieldInternalNameHint);
+           
+            Guid termStoreId = Guid.Empty;
+            Guid termSetId = Guid.Empty;
+            GetTaxonomyFieldInfo(clientContext, out termStoreId, out termSetId);
+
+            TaxonomyField taxonomyField = clientContext.CastTo<TaxonomyField>(groupMetadataField);
+            taxonomyField.SspId = termStoreId;
+            taxonomyField.TermSetId = termSetId;
+            taxonomyField.TargetTemplate = String.Empty;
+            taxonomyField.AnchorId = Guid.Empty;
+            taxonomyField.Update();
             clientContext.ExecuteQuery();
             return list;
         }
@@ -402,7 +416,7 @@ namespace AddressBookUsingCSOM
         {
             try
             {
-                List contacts = clientContext.Web.Lists.GetByTitle("AddressBook1");
+                List contacts = clientContext.Web.Lists.GetByTitle(listName);
                 clientContext.ExecuteQuery();
                 FieldCollection fields = contacts.Fields;
                 clientContext.Load(fields);
@@ -451,6 +465,24 @@ namespace AddressBookUsingCSOM
                 Console.WriteLine(exception.StackTrace);
                 return false;
             }
+        }
+
+        private void GetTaxonomyFieldInfo(ClientContext clientContext, out Guid termStoreId, out Guid termSetId)
+        {
+            termStoreId = Guid.Empty;
+            termSetId = Guid.Empty;
+
+            TaxonomySession session = TaxonomySession.GetTaxonomySession(clientContext);
+            TermStore termStore = session.GetDefaultSiteCollectionTermStore();
+
+            TermSetCollection termSets = termStore.GetTermSetsByName("Group", 1033);
+
+            clientContext.Load(termSets, tsc => tsc.Include(ts => ts.Id));
+            clientContext.Load(termStore, ts => ts.Id);
+            clientContext.ExecuteQuery();
+
+            termStoreId = termStore.Id;
+            termSetId = termSets.FirstOrDefault().Id;
         }
     }
 }
