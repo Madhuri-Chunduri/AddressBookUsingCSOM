@@ -20,16 +20,17 @@ namespace AddressBookUsingCSOM
             {
                 secureStringPassword.AppendChar(c);
             }
-            using (var clientContext = new ClientContext("https://intern2k20.sharepoint.com/sites/Technovert"))
-            {
-                clientContext.Credentials = new SharePointOnlineCredentials(userName, secureStringPassword);
-                Web web = clientContext.Web;
-                clientContext.Load(web);
-                clientContext.ExecuteQuery();
-
-                UserActions userActions = new UserActions(clientContext);
-                userActions.ShowUserActions();
-            }
+            //using (var clientContext = new ClientContext("https://intern2k20.sharepoint.com/sites/Technovert"))
+            //{
+             //   clientContext.Credentials = new SharePointOnlineCredentials(userName, secureStringPassword);
+             //   Web web = clientContext.Web;
+             //   clientContext.Load(web);
+             //   clientContext.ExecuteQuery();
+               // UserActions userActions = new UserActions(clientContext);
+               //userActions.ShowUserActions();
+            //}
+            UserActionsAPI userActionsAPI = new UserActionsAPI();
+            userActionsAPI.ShowUserActions();
         }
     }
 }
